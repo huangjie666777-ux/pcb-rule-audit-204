@@ -64,7 +64,7 @@ class Parser:
         return value * self.unit
 
     def parse(self):
-        # 1) 按 '*' 分块并记录起始行
+        # 1) 按 '*' 分块并记录起始行与是否带结束符
         raw_blocks = []
         line = 1
         start_line = 1
@@ -72,7 +72,7 @@ class Parser:
         buf = ""
         for ch in self.text:
             if ch == "*":
-                raw_blocks.append((start_line, buf))
+                raw_blocks.append((start_line, buf, True))
                 buf = ""
                 started = False
             else:
@@ -83,13 +83,18 @@ class Parser:
                     start_line = line
                 buf += ch
         if buf.strip():
-            raw_blocks.append((start_line, buf))
+            raw_blocks.append((start_line, buf, False))
+        if raw_blocks and not raw_blocks[-1][2]:
+            tail_line, tail = raw_blocks[-1][0], raw_blocks[-1][1].strip()
+            raise GerberError(
+                "指令块缺少 * 结束符(末尾 M02 也须以 * 收尾)",
+                tail_line, tail)
 
         # 2) 状态机扫描: '%' 之间为扩展指令, 其余为普通指令块
         extended = False
         ext_buf = ""
         ext_line = 1
-        for blk_line, body in raw_blocks:
+        for blk_line, body, _terminated in raw_blocks:
             src = body
             cur_line = blk_line
             while src:

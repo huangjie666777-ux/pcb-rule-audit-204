@@ -130,8 +130,12 @@ def load_netlist(raw):
 
 
 def _islands(geom):
-    return [g for g in getattr(geom, "geoms", [geom])
-            if g.geom_type == "Polygon" and not g.is_empty]
+    islands = [g for g in getattr(geom, "geoms", [geom])
+               if g.geom_type == "Polygon" and not g.is_empty]
+    # 按包围盒排序, 保证铜岛编号与报告顺序确定
+    islands.sort(key=lambda g: (g.bounds[0], g.bounds[1],
+                                g.bounds[2], g.bounds[3]))
+    return islands
 
 
 def _label(node):
@@ -141,8 +145,8 @@ def _label(node):
     return "%s#%d" % (node[1], node[2])
 
 
-def analyze(top_geom, bottom_geom, terminals, holes, tol):
-    """构建铜岛与镀铜孔连通图, 对照网表生成核对报告。"""
+def connectivity(top_geom, bottom_geom, terminals, holes, tol):
+    """构建扣孔铜岛与镀铜孔连通图, 供网表核对与制造规则审查复用。"""
     disks = {}
     for h in holes:
         disks[h.id] = Point(h.x, h.y).buffer(
@@ -210,6 +214,25 @@ def analyze(top_geom, bottom_geom, terminals, holes, tol):
         else:
             term_node[t.id] = ("island", t.layer, hits[0])
 
+    return {
+        "layers": layers,
+        "adj": adj,
+        "components": components,
+        "comp_of": comp_of,
+        "term_node": term_node,
+        "unconnected": unconnected,
+    }
+
+
+def report(conn, terminals):
+    """由连通图对照网表生成短/断路核对报告。"""
+    layers = conn["layers"]
+    adj = conn["adj"]
+    components = conn["components"]
+    comp_of = conn["comp_of"]
+    term_node = conn["term_node"]
+    unconnected = conn["unconnected"]
+
     term_by_id = {t.id: t for t in terminals}
     networks = []
     shorts = []
@@ -266,6 +289,12 @@ def analyze(top_geom, bottom_geom, terminals, holes, tol):
         "opens": opens,
         "ok": not shorts and not opens,
     }
+
+
+def analyze(top_geom, bottom_geom, terminals, holes, tol):
+    """构建铜岛与镀铜孔连通图, 对照网表生成核对报告。"""
+    return report(connectivity(top_geom, bottom_geom, terminals, holes, tol),
+                  terminals)
 
 
 def _path(adj, start, goal):

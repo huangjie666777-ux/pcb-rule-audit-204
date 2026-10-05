@@ -1,13 +1,15 @@
 
-"""FastAPI 请求处理层: 上传、铜层重建、SVG 下载、双层网表核对。"""
+"""FastAPI 请求处理层: 上传、铜层重建、SVG 下载、双层网表核对、制造规则审查。"""
 import uuid
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
+from copper_drc204.drc import audit, load_rules
 from copper_drc204.errors import GerberError
 from copper_drc204.geometry import build_geometry, summarize
-from copper_drc204.netcheck import NetlistError, analyze, load_netlist
+from copper_drc204.netcheck import (NetlistError, analyze, connectivity,
+                                    load_netlist, report)
 from copper_drc204.parser import Parser
 from copper_drc204.svg_export import geometry_to_svg
 
@@ -59,11 +61,7 @@ async def download_svg(svg_id: str):
                  'attachment; filename="copper_%s.svg"' % svg_id[:8]})
 
 
-@app.post("/api/netcheck")
-async def netcheck(top: UploadFile = File(...),
-                   bottom: UploadFile = File(...),
-                   netlist: UploadFile = File(...),
-                   tolerance: float = Form(0.01)):
+async def _build_layers(top, bottom, tolerance):
     if tolerance <= 0:
         raise HTTPException(422, "tolerance 必须为正数(毫米)")
     geoms = {}
@@ -81,10 +79,56 @@ async def netcheck(top: UploadFile = File(...),
             raise HTTPException(422, {
                 "error": "%s Gerber: %s" % (label, exc.message),
                 "line": exc.line, "source": exc.source})
+    return geoms
+
+
+async def _load_netlist_upload(netlist):
     raw = await netlist.read()
     try:
-        terminals, holes = load_netlist(raw)
+        return load_netlist(raw)
     except NetlistError as exc:
         raise HTTPException(422, {
             "error": exc.message, "position": exc.position})
-    return analyze(geoms["顶层"], geoms["底层"], terminals, holes, tolerance)
+
+
+@app.post("/api/netcheck")
+async def netcheck(top: UploadFile = File(...),
+                   bottom: UploadFile = File(...),
+                   netlist: UploadFile = File(...),
+                   tolerance: float = Form(0.01)):
+    geoms = await _build_layers(top, bottom, tolerance)
+    terminals, holes = await _load_netlist_upload(netlist)
+    try:
+        return analyze(geoms["顶层"], geoms["底层"], terminals, holes,
+                       tolerance)
+    except NetlistError as exc:
+        raise HTTPException(422, {
+            "error": exc.message, "position": exc.position})
+
+
+@app.post("/api/drc")
+async def drc(top: UploadFile = File(...),
+              bottom: UploadFile = File(...),
+              netlist: UploadFile = File(...),
+              rules: UploadFile = File(...),
+              tolerance: float = Form(0.01)):
+    geoms = await _build_layers(top, bottom, tolerance)
+    terminals, holes = await _load_netlist_upload(netlist)
+    raw_rules = await rules.read()
+    known_nets = {t.net for t in terminals}
+    try:
+        rule_set = load_rules(raw_rules, known_nets)
+    except NetlistError as exc:
+        raise HTTPException(422, {
+            "error": exc.message, "position": exc.position})
+    try:
+        conn = connectivity(geoms["顶层"], geoms["底层"], terminals, holes,
+                            tolerance)
+    except NetlistError as exc:
+        raise HTTPException(422, {
+            "error": exc.message, "position": exc.position})
+    result = audit(conn, terminals, *rule_set)
+    net_report = report(conn, terminals)
+    result["netcheck"] = net_report
+    result["ok"] = result["ok"] and net_report["ok"]
+    return result
