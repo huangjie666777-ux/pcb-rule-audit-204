@@ -83,7 +83,11 @@ class Parser:
                     start_line = line
                 buf += ch
         if buf.strip():
-            raw_blocks.append((start_line, buf))
+            trailing_source = buf.strip()
+            if trailing_source.startswith("%"):
+                trailing_source = trailing_source[1:].strip()
+            raise GerberError("指令必须以 '*' 结束", start_line,
+                              trailing_source)
 
         # 2) 状态机扫描: '%' 之间为扩展指令, 其余为普通指令块
         extended = False

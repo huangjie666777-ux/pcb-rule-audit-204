@@ -125,6 +125,11 @@ def test_truncated_file_error():
     assert "截断" in str(e.value)
 
 
+def test_terminator_star_required_after_m02():
+    with pytest.raises(GerberError, match=r"\*.*结束"):
+        Parser(HEADER + "%ADD10C,0.5*%\nD10*\nX0Y0D03*\nM02\n").parse()
+
+
 def test_unsupported_command_error():
     with pytest.raises(GerberError):
         run("G74*")

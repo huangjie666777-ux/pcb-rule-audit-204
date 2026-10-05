@@ -1,0 +1,28 @@
+{
+  "default_clearance_mm": 0.5,
+  "clearance_overrides": [
+    {"nets": ["SIG", "GND"], "clearance_mm": 1.5},
+    {"nets": ["SIG", "VCC"], "clearance_mm": 1.0}
+  ],
+  "keepouts": [
+    {
+      "id": "K_INSIDE_PLATED_HOLE",
+      "layer": "top",
+      "polygon": [[4.70, 4.70], [5.30, 4.70], [5.30, 5.30], [4.70, 5.30]]
+    },
+    {
+      "id": "K_CONCAVE_INSIDE_UNPLATED_HOLE",
+      "layer": "bottom",
+      "polygon": [
+        [10.0, 5.35], [10.30, 5.20], [10.40, 5.00],
+        [10.12, 4.92], [10.00, 4.65], [9.88, 4.92],
+        [9.60, 5.00], [9.70, 5.20]
+      ]
+    },
+    {
+      "id": "K_TOUCHES_TOP_SIG",
+      "layer": "top",
+      "polygon": [[20.55, 4.65], [21.05, 4.65], [21.05, 5.35], [20.55, 5.35]]
+    }
+  ]
+}

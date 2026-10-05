@@ -141,8 +141,8 @@ def _label(node):
     return "%s#%d" % (node[1], node[2])
 
 
-def analyze(top_geom, bottom_geom, terminals, holes, tol):
-    """构建铜岛与镀铜孔连通图, 对照网表生成核对报告。"""
+def prepare_board(top_geom, bottom_geom, terminals, holes, tol):
+    """扣孔、提取铜岛, 并构建镀铜孔实际连通图。"""
     disks = {}
     for h in holes:
         disks[h.id] = Point(h.x, h.y).buffer(
@@ -209,6 +209,33 @@ def analyze(top_geom, bottom_geom, terminals, holes, tol):
             unconnected.append(t)
         else:
             term_node[t.id] = ("island", t.layer, hits[0])
+
+    return {
+        "disks": disks,
+        "layers": layers,
+        "adj": adj,
+        "nodes": nodes,
+        "comp_of": comp_of,
+        "components": components,
+        "term_node": term_node,
+        "unconnected": unconnected,
+    }
+
+
+def analyze(top_geom, bottom_geom, terminals, holes, tol):
+    """构建铜岛与镀铜孔连通图, 对照网表生成核对报告。"""
+    prepared = prepare_board(top_geom, bottom_geom, terminals, holes, tol)
+    return netcheck_report(prepared, terminals)
+
+
+def netcheck_report(prepared, terminals):
+    """根据已准备好的实际连通图生成短/断路报告。"""
+    layers = prepared["layers"]
+    adj = prepared["adj"]
+    comp_of = prepared["comp_of"]
+    components = prepared["components"]
+    term_node = prepared["term_node"]
+    unconnected = prepared["unconnected"]
 
     term_by_id = {t.id: t for t in terminals}
     networks = []
